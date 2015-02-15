@@ -1,0 +1,431 @@
+<head>
+    <META charset="utf-8">
+    <title>Agora</title>
+    <style type="text/css">
+        .inactive {
+            display: none;
+        } 
+        #AppBody {
+            border: 1px solid #e3e3e3;
+            border-radius: 4px;
+            width: 1320px;
+            height: 540px;
+            position: relative;
+            overflow: hidden;
+        }
+        #InputPanel {
+            width: 280px;
+            height: 500px;
+            padding: 20px 19px 20px 20px;
+            background-color: #f5f5f5;
+            border-right: 1px solid #e3e3e3;
+            box-shadow: inset 0 1px 1px rgba(0,0,0,0.05);
+            position: absolute;
+            left: 0;
+        } 
+        #GraphPanel {
+            width: 1000px;
+            height: 540px;
+            position: absolute;
+            left: 320px;
+        }
+    </style>
+    <script type="text/javascript" src="http://www.d3plus.org/js/d3.js"></script>
+    <script type="text/javascript" src="http://www.d3plus.org/js/d3plus.js"></script>
+    <script type="text/javascript">
+        
+        var port = 27387;
+        
+        var force; //this variable will contain the force layout object.
+        
+        //these arrays will contain the nodes and links that are i the appropriate 
+        // format to be understood by the force layout.
+        var jsgraph = {
+            nodes : [],
+            links : []
+        };   
+        
+        var modeList = {
+            login : 1,
+            reply : 2
+        };
+        
+        //this variable is for storing the list of posts that a new post is in reply to.
+        var targets = [];
+        
+        var bridge;
+        
+        
+        // Global variables
+        var JAVA_READY_FLAG = false;
+
+        // Get the applet object
+        function getJAgoraBridge(){
+                return document.getElementById('JAgoraJSBridge');
+        }
+        // Applet reports it is ready to use
+        function javaSocketBridgeReady() {
+                bridge = getJAgoraBridge();
+                alert(bridge.getCodeBase());
+                bridge.startLib();
+                JAVA_READY_FLAG = true;
+                loadGraph(bridge.getArgumentByID(bridge.findArgument(43)));
+        }
+        
+        function setAppMode(mode) {
+            if (mode == modeList.login) {
+                d3.select("#LoginPanel").classed("inactive", false);
+                d3.select("#ReplyPanel").classed("inactive", true);
+            } else if (mode == modeList.reply) {
+                d3.select("#LoginPanel").classed("inactive", true);
+                d3.select("#ReplyPanel").classed("inactive", false);
+            }
+        }
+        // This fuction logs us in and loads the forum hub.
+        
+        function logIn() {
+                if (JAVA_READY_FLAG === true) {
+                    bridge.logIn(d3.select("#usernameField").node().value, d3.select("#passwordField").node().value);
+                    clearGraph();
+                    setAppMode(modeList.reply);
+                }
+                else alert("Applet not yet ready.");
+            d3.select("#usernameField").property("value", "");
+            d3.select("#passwordField").property("value", "");
+        }
+        
+        //This function loads the arguments and attacks that are directly related to a argument.
+        
+        function loadNodes(d) {
+            loadGraph(bridge.getArgumentByID(d.post.getID()))
+        }
+        
+        //This function clears the svg, so we can draw more stuff in it.
+        
+        function clearSVG() {
+            svg.selectAll("*").remove();
+        }
+        
+        //this funcion clears the local javascript graph.
+        
+        function clearGraph() {
+            jsgraph.nodes = [];
+            jsgraph.links = [];
+        }
+        
+        //this function adds a new post that you can fill with text, connect to 
+        //existing posts, and submit.
+        
+        function newPost() {
+            if (JAVA_READY_FLAG === true && targets.length > 0) {
+                if (bridge.newArgument(d3.select("#titleField").node().value,
+                                   d3.select("#bodyField").node().value, targets)) {
+                    loadGraph(bridge.getArgumentByID(targets[0].getID()))
+                    d3.select("#titleField").property("value", "");
+                    d3.select("#bodyField").property("value", "");
+                    targets = [];
+                }
+            }
+            
+        }
+        
+        //this function removes a post from the local javascript graph, reloads 
+        //the links (Which should eliminate any attacks directly related to said 
+        //argument, but doesn't right now), and then re-does the svg display.
+        
+        function removePost(d) {
+            var i;
+            for (i = 0; i < jsgraph.links.length; i++) {
+                if (jsgraph.links[i].source.post.getID().equals(d.post.getID())) {
+                    jsgraph.links.splice(i,1);
+                    i--;
+                }
+                if (jsgraph.links[i].target.post.getID().equals(d.post.getID())) {
+                    jsgraph.links.splice(i,1);
+                    i--;
+                }
+            }
+            
+            for (i = 0; i < jsgraph.nodes.length; i++) {
+                if (jsgraph.nodes[i].post.getID().equals(d.post.getID())) {
+                    jsgraph.nodes.splice(i,1);
+                    break;
+                }
+            }
+            
+            refreshSVG();
+        }
+        
+        function sizeArgument(d) {
+            var size = [150, 60], characters = 0;
+            characters = d.post.getText().length;
+            return size;
+        }
+        
+        //this function load the graph and constructs a visual representation.
+        
+        function refreshSVG() {
+            clearSVG();
+            
+            force = d3.layout.force()
+                 .nodes(jsgraph.nodes)
+                 .links(jsgraph.links)
+                 .size([1000, 540])
+                 .linkDistance([150])
+                 .linkStrength(0.3)
+                 .gravity(0.005)
+                 .charge([-100])
+                 .chargeDistance([300])
+                 .start();
+            
+            edges = svg.selectAll("line")
+                .data(jsgraph.links);
+        
+            edges.exit().remove();
+        
+            edges.enter()
+                .append("line")
+                .style("stroke", "rgb(255,0,0)");
+        
+            var numPosts = 0;
+        
+            var nodes = svg.selectAll("g")
+                .data(jsgraph.nodes);
+                
+            
+        
+            nodes.exit().remove();
+            
+            nodes.enter()
+                .append("g")
+                .attr("transform", function(d) {return "translate("+1000+","+1000+")";});;
+        
+            svg.selectAll("g")
+                .attr("id", function(d) {
+                    return "group" + numPosts++;
+                });
+        
+            
+            numPosts = 0;
+            var rects = svg.selectAll("g")
+                .append("rect")
+                .attr("width", function(d) {
+                    return sizeArgument(d)[0];
+                }).attr("height", function(d) {
+                    return sizeArgument(d)[1];
+                }).attr("id", function(d) { return "rect" + numPosts++;})
+                .call(force.drag);
+        
+            var titles = svg.selectAll("g")
+                .append("text")
+                .text(function(d) {return d.post.getContent().get("Title");})
+                .attr("font-family", "sans-serif")
+                .attr("font-size", "11px");
+        
+            var i;
+            numPosts = 0;
+            var texts = svg.selectAll("g")
+                .append("text")
+                .text(function(d) {return d.post.getText();})
+                .attr("font-size", "11px")
+                .attr("font-family", "sans-serif")
+                .attr("fill", "white")
+                .attr("id", function(d) { return "text" + numPosts++;});
+        
+            for (i = 0; i < numPosts; i++) {
+                    d3plus.textwrap()
+                        .container(d3.select("#text" + i))
+                        .width(d3.select("#rect" + i).node().width.baseVal.value)
+                        .draw();
+            }
+        
+            var expandButtons = svg.selectAll("g")
+                    .append("rect")
+                    .attr("x", function(d) {
+                        return d3.select("#rect" + d.index).node().width.baseVal.value -30;
+                    })
+                    .attr("y", function(d) {
+                        return d3.select("#rect" + d.index).node().height.baseVal.value -10;
+                    })
+                    .attr("width", 30)
+                    .attr("height", 10)
+                    .style("fill", "blue")
+                    .on("click", loadNodes);
+            
+            numPosts = 0;
+            var replyButtons = svg.selectAll("g")
+                    .append("rect")
+                    .attr("y", function(d) {
+                        return d3.select("#rect" + d.index).node().height.baseVal.value -10;
+                    })
+                    .attr("width", 30)
+                    .attr("height", 10)
+                    .attr("id", function(d) { return "replyButton" + numPosts++;})
+                    .style("fill", function(d) {
+                        for (i = 0; i < targets.length; i++) {
+                            if (targets[i].getID().equals(d.post.getID())) {
+                                return "white";
+                            }
+                        }
+                        
+                        return "green";             
+                    })
+                    .on("click", function (d) {
+                        var index = -1;
+                        for (i = 0; i < targets.length; i++) {
+                            if (targets[i].getID().equals(d.post.getID())) {
+                                index = i;
+                                break;
+                            }
+                        }
+                        if (index == -1) {
+                            targets.push(d.post);
+                            d3.select("#replyButton" + d.index)
+                            .style("fill", "white");
+                        } else {
+                            targets.splice(index, 1);
+                            d3.select("#replyButton" + d.index)
+                            .style("fill", "green");
+                        }
+                    });
+                    
+            var closeButtons = svg.selectAll("g")
+                    .append("circle")
+                    .attr("cx", function(d) {
+                        return d3.select("#rect" + d.index).node().width.baseVal.value;
+                    })
+                    .attr("r", 10)
+                    .style("fill", "red")
+                    .on("click", removePost);
+            
+            force.on("tick", function() {
+
+                edges.attr("x1", function(d) { return d.source.x + d3.select("#rect" + d.source.index).node().width.baseVal.value/2})
+                     .attr("y1", function(d) { return d.source.y + d3.select("#rect" + d.source.index).node().height.baseVal.value/2; })
+                     .attr("x2", function(d) { return d.target.x + d3.select("#rect" + d.target.index).node().width.baseVal.value/2; })
+                     .attr("y2", function(d) { return d.target.y + d3.select("#rect" + d.target.index).node().height.baseVal.value/2; });
+             
+                for(i = 0; i < jsgraph.links.length; i++) {
+                    var targy = jsgraph.nodes[jsgraph.links[i].target.index].y;
+                    var sorcy = jsgraph.nodes[jsgraph.links[i].source.index].y;
+                    if (sorcy - targy < 80) {
+                        jsgraph.nodes[jsgraph.links[i].target.index].y -= 1;
+                        jsgraph.nodes[jsgraph.links[i].source.index].y += 1;
+                    }
+                }
+                nodes.attr("transform", function(d) {return "translate("+d.x+","+d.y+")";});
+
+            });
+        }
+        
+        //this function loads takes the links and turns them into javascript 
+        //data that the force layout can make use of.
+        
+        function loadLinks(links) {
+            var i, j, edge, post;
+            mainloop:
+            for (i = 0; i < links.length; i++) {
+                edge = links[i];
+                var target = null, origin = null;
+                //ensure there are no duplicate links.
+                for (j = 0; j < jsgraph.links.length; j++) {
+                    if (edge.getTarget().getID().equals(jsgraph.links[j].target.post.getID()) &&
+                        edge.getOrigin().getID().equals(jsgraph.links[j].source.post.getID()))
+                        continue mainloop;
+                }
+                
+                for (j = 0; j < jsgraph.nodes.length; j++) {
+                    post = jsgraph.nodes[j].post;
+                    
+                    if (post.getID().equals(edge.getTarget().getID())) {
+                        target = jsgraph.nodes[j];
+                    }
+                    if (post.getID().equals(edge.getOrigin().getID())) {
+                        origin = jsgraph.nodes[j];
+                    }
+                    if (target != null && origin != null) {
+                        jsgraph.links.push({source : origin, target : target});
+                        break;
+                    }
+                }
+                
+            }
+        }
+        
+        //this function takes a JAgoraGraph object, copies the data from it, and 
+        //then calls loadLinks() and refreshSVG().
+        
+        function loadGraph(graph) {
+            
+            
+            var posts = graph.getNodes();
+            var newLinks = graph.getAttacks();
+            var edge, i, post, j, foundNode;
+            
+            for (i = 0; i < posts.length; i++) {
+                foundNode = false;
+                for (j = 0; j < jsgraph.nodes.length; j++) {
+                    if (jsgraph.nodes[j].post.getID().equals(posts[i].getID())) {
+                        foundNode = true;
+                        break;
+                    }
+                }
+                if (!foundNode) jsgraph.nodes.push({post : posts[i]});
+            }
+            
+            loadLinks(newLinks);
+            
+            refreshSVG();
+            
+        }
+    </script>
+</head>
+
+<body>
+
+    <div>
+        <applet id="JAgoraJSBridge" archive="JAgoraLib.jar" code="org.agora.lib.JAgoraJSBridge.class" width="1" height="1"></applet>
+        <div id="modeSelect" class="btn-group">
+            <button type="button" onclick="setAppMode(modeList.login)">Login</button>
+            <button type="button" onclick="setAppMode(modeList.reply)">Reply</button>
+        </div>
+        <div id="AppBody">
+            <div id="InputPanel" class="panel tab-content">
+                <div id="LoginPanel" class="tab-pane">
+                    Login
+                    <p></p>
+
+                    UserName:
+
+                    <input type="text" id="usernameField">
+
+                    Password:
+
+                    <input type="password" id="passwordField">
+
+                    <button type="button" onclick="logIn()">Submit</button>
+                </div>
+                <div id="ReplyPanel" class="tab-pane inactive">
+                    Reply
+                    <p></p>
+                    Title:
+                    <input type="text" id="titleField">
+                    <p></p>Body:
+                    <input type="text" id="bodyField">
+                    <button type="button" onclick="newPost()">Submit</button>
+                    
+                    <button type="button" onclick="refreshSVG()">Refresh Graph</button>
+                </div>
+            </div>
+            <div id="GraphPanel">
+            </div>
+        </div>
+    </div>
+    <script type="text/javascript">
+        var svg = d3.select("#GraphPanel")
+                .append("svg")
+                .attr("width", 1000)
+                .attr("height", 540);
+    </script>
+</body>
+</html>
