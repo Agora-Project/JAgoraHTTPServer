@@ -1,25 +1,18 @@
 
-
-
-import java.io.ByteArrayInputStream;
-import java.io.DataInputStream;
 import java.io.IOException;
 import java.net.Socket;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import javax.websocket.OnClose;
-import javax.websocket.OnError;
-import javax.websocket.OnMessage;
-import javax.websocket.OnOpen;
-import javax.websocket.Session;
-import javax.websocket.server.ServerEndpoint;
+import javax.servlet.ServletException;
+import javax.servlet.ServletInputStream;
+import javax.servlet.ServletOutputStream;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import org.agora.lib.IJAgoraLib;
 import org.agora.lib.JAgoraComms;
 import org.agora.logging.Log;
@@ -29,18 +22,15 @@ import org.agora.server.Options;
 import org.agora.server.UserSession;
 import org.agora.server.Util;
 import org.agora.server.queries.*;
-import org.bson.BSONEncoder;
-import org.bson.BasicBSONEncoder;
 import org.bson.BasicBSONObject;
 
 /**
  *
  * @author angle
  */
-@ServerEndpoint(value = "/Websocket/Agora")
-public class JAgoraWebSocketServer implements JAgoraServer{
-    
-    private Session session;
+
+
+public class JAgoraHttpServer extends HttpServlet implements JAgoraServer {
     
     protected Random rand;
     
@@ -48,14 +38,11 @@ public class JAgoraWebSocketServer implements JAgoraServer{
     
     protected static ConcurrentMap<Integer, UserSession> sessions;
     
-    public JAgoraWebSocketServer() {
-        
-    }
+    public JAgoraHttpServer() {}
     
-    @OnOpen
-    public void start(Session session) {
+    @Override
+    public void init() {
         rand = new Random();
-        this.session = session;
         
         if (sessions == null) {
             sessions = new ConcurrentHashMap<>();
@@ -65,53 +52,79 @@ public class JAgoraWebSocketServer implements JAgoraServer{
         
         readConfigurationFiles();
     }
-
-    @OnClose
-    public void end() {
- 	
-    }
- 	
-    @OnMessage
-    public boolean incoming(byte[] message) {
- 	BasicBSONObject request = null;
-        try {
-            request = JAgoraComms.readBSONObjectFromStream(
-                    new DataInputStream(new ByteArrayInputStream(message)));
-        } catch (IOException ex) {
-            Log.error("[JAgoraWebSocketServer] Error processing BSON Request: " +ex.getMessage());
-        }
-        if (request == null)
-            return false;
     
-        BasicBSONObject response = processBSONRequest(request);
-        if (response == null)
-            return false;
+    /**
+     * Processes requests for both HTTP <code>GET</code> and <code>POST</code>
+     * methods.
+     *
+     * @param request servlet request
+     * @param response servlet response
+     * @throws ServletException if a servlet-specific error occurs
+     * @throws IOException if an I/O error occurs
+     */
+    protected void processRequest(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
         
-        BSONEncoder benc = new BasicBSONEncoder();
-        byte[] b = benc.encode(response);
-        session.getAsyncRemote().sendObject(ByteBuffer.wrap(b));
-        return true;
-    }
-    
-    public BasicBSONObject processBSONRequest(BasicBSONObject request) {
-        int requestType = (Integer) request.get(IJAgoraLib.ACTION_FIELD);
+        ServletInputStream inputStream = request.getInputStream();
+        BasicBSONObject bsonRequest = JAgoraComms.readBSONObjectFromStream(inputStream);
+        int requestType = (Integer)bsonRequest.get(IJAgoraLib.ACTION_FIELD);
         QueryResponder r = getResponder(requestType);
+        BasicBSONObject bsonResponse = null;
         if (r == null) {
-           BasicBSONObject response = new BasicBSONObject();
-           response.put(IJAgoraLib.RESPONSE_FIELD, IJAgoraLib.SERVER_FAIL);
-           response.put(IJAgoraLib.REASON_FIELD, "Cannot handle this request.");
-           return response;
+            bsonResponse = new BasicBSONObject();
+            bsonResponse.put(IJAgoraLib.RESPONSE_FIELD, IJAgoraLib.SERVER_FAIL);
+            bsonResponse.put(IJAgoraLib.REASON_FIELD, "Cannot handle this request.");
+        } else {
+            bsonResponse = r.respond(bsonRequest, this);
         }
-        return r.respond(request, this);
-  }
- 	
-    @OnError
-    public void onError(Throwable t) throws Throwable {
+        response.setContentType("application/bin");
+        ServletOutputStream outputStream = response.getOutputStream();
+        JAgoraComms.writeBSONObjectToStream(outputStream, bsonResponse);
     }
 
+    // <editor-fold defaultstate="collapsed" desc="HttpServlet methods. Click on the + sign on the left to edit the code.">
+    /**
+     * Handles the HTTP <code>GET</code> method.
+     *
+     * @param request servlet request
+     * @param response servlet response
+     * @throws ServletException if a servlet-specific error occurs
+     * @throws IOException if an I/O error occurs
+     */
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        processRequest(request, response);
+    }
+
+    /**
+     * Handles the HTTP <code>POST</code> method.
+     *
+     * @param request servlet request
+     * @param response servlet response
+     * @throws ServletException if a servlet-specific error occurs
+     * @throws IOException if an I/O error occurs
+     */
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        processRequest(request, response);
+    }
+
+    /**
+     * Returns a short description of the servlet.
+     *
+     * @return a String containing servlet description
+     */
+    @Override
+    public String getServletInfo() {
+        return "Short description";
+    }// </editor-fold>
+    
     @Override
     public QueryResponder getResponder(int operation) {
         if (!responders.containsKey(operation))
+            
             return null;
         return responders.get(operation);
     }
@@ -175,7 +188,7 @@ public class JAgoraWebSocketServer implements JAgoraServer{
 
     @Override
     public BlockingQueue<Socket> getRequestQueue() {
-        throw new UnsupportedOperationException("Operation will never be supported, use JAgoraSocketServer instead."); 
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
     }
     
     protected void readConfigurationFiles() {
@@ -184,7 +197,7 @@ public class JAgoraWebSocketServer implements JAgoraServer{
     }
     
     protected void initialiseResponders() {
-    responders = new HashMap<Integer, QueryResponder>();
+    responders = new HashMap<>();
     responders.put(IJAgoraLib.LOGIN_ACTION, new LoginResponder());
     responders.put(IJAgoraLib.LOGOUT_ACTION, new LogoutResponder());
     responders.put(IJAgoraLib.QUERY_BY_THREAD_ID_ACTION, new ThreadByIDResponder());
@@ -197,5 +210,5 @@ public class JAgoraWebSocketServer implements JAgoraServer{
     responders.put(IJAgoraLib.EDIT_ARGUMENT_ACTION, new EditArgumentResponder());
     responders.put(IJAgoraLib.QUERY_BY_ARGUMENT_ID_ACTION, new QueryArgumentByIDResponder());
   }
-    
+
 }

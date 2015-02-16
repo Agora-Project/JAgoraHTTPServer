@@ -22,7 +22,7 @@ public class JAgoraServerApplicationConfig implements ServerApplicationConfig{
     @Override
     public Set<Class<?>> getAnnotatedEndpointClasses(Set<Class<?>> scanned) {
         Set<Class<?>> s = new HashSet<>();
-        s.add(JAgoraWebSocketServlet.class);
+        s.add(JAgoraWebSocketServer.class);
         return s;
     }
     

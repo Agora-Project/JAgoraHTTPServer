@@ -1,4 +1,13 @@
-<web-app id="simple" version="2.4">
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app id="simple" version="2.4" xmlns="http://java.sun.com/xml/ns/j2ee">
+    <servlet>
+        <servlet-name>JAgoraHttpServer</servlet-name>
+        <servlet-class>JAgoraHttpServer</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>JAgoraHttpServer</servlet-name>
+        <url-pattern>/JAgoraHttpServer</url-pattern>
+    </servlet-mapping>
     <welcome-file-list>
         <welcome-file>index.htm</welcome-file>
     </welcome-file-list>
