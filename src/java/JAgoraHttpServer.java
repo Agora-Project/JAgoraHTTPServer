@@ -1,5 +1,6 @@
 
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
@@ -15,6 +16,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.agora.lib.IJAgoraLib;
 import org.agora.lib.JAgoraComms;
+import org.agora.logging.ConsoleLog;
 import org.agora.logging.Log;
 import org.agora.server.DatabaseConnection;
 import org.agora.server.JAgoraServer;
@@ -43,6 +45,7 @@ public class JAgoraHttpServer extends HttpServlet implements JAgoraServer {
     @Override
     public void init() {
         rand = new Random();
+        Log.addLog(new ConsoleLog());
         
         if (sessions == null) {
             sessions = new ConcurrentHashMap<>();
@@ -50,7 +53,12 @@ public class JAgoraHttpServer extends HttpServlet implements JAgoraServer {
         
         initialiseResponders();
         
-        readConfigurationFiles();
+        try {
+            readConfigurationFiles();
+        } catch (MalformedURLException e) {
+            log("[JAgoraHttpServer] could not read conf files: " + e.getMessage());
+            Log.error("[JAgoraHttpServer] could not read conf files: " + e.getMessage());
+        }
     }
     
     /**
@@ -136,7 +144,7 @@ public class JAgoraHttpServer extends HttpServlet implements JAgoraServer {
                                                         Options.DB_PASS);
         boolean connected = dbc.open();
         if(!connected) {
-            Log.error("[JAgoraServer] Could not initiate connection to database.");
+            Log.error("[JAgoraHttpServer] Could not initiate connection to database.");
             return null;
         }
 
@@ -191,9 +199,17 @@ public class JAgoraHttpServer extends HttpServlet implements JAgoraServer {
         throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
     }
     
-    protected void readConfigurationFiles() {
-      Options.readDBConfFromFile();
-      Options.readAgoraConfFromFile();
+    protected void readConfigurationFiles() throws MalformedURLException {
+      try { 
+        Options.readDBConfFromStream(getServletContext().getResourceAsStream("/WEB-INF/" + Options.DB_FILE));
+        Options.readAgoraConfFromStream(getServletContext().getResourceAsStream("/WEB-INF/" + Options.CONF_FILE));
+      } catch (Exception e) {
+          log("[JAgoraHttpServer] could not read conf files from " 
+                  + getServletContext().getResource("/WEB-INF/" + Options.DB_FILE) + ": " + e.getMessage());
+          Log.error("[JAgoraHttpServer] could not read conf files from " 
+                  + getServletContext().getResource("/WEB-INF/" + Options.DB_FILE) + ": " + e.getMessage());
+          throw e;
+      }
     }
     
     protected void initialiseResponders() {
