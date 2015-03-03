@@ -34,7 +34,7 @@ public class JAgoraHttpServer extends HttpServlet implements JAgoraServer {
 
   protected Random rand;
 
-  protected static Map<Integer, QueryResponder> responders;
+  protected static Map<Integer, QueryResponder> responders = null;
 
   protected static ConcurrentMap<Integer, UserSession> sessions;
 
