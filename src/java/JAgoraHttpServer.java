@@ -228,6 +228,8 @@ public class JAgoraHttpServer extends HttpServlet implements JAgoraServer {
       responders.put(IJAgoraLib.QUERY_THREAD_LIST_ACTION, new ThreadListResponder());
       responders.put(IJAgoraLib.EDIT_ARGUMENT_ACTION, new EditArgumentResponder());
       responders.put(IJAgoraLib.QUERY_BY_ARGUMENT_ID_ACTION, new QueryArgumentByIDResponder());
+      responders.put(IJAgoraLib.DELETE_ARGUMENT_ACTION, new DeleteArgumentResponder());
+      
     }
   }
 

@@ -5,6 +5,7 @@
         .inactive {
             display: none;
         } 
+        
         #AppBody {
             border: 1px solid #e3e3e3;
             border-radius: 4px;
@@ -13,6 +14,7 @@
             position: relative;
             overflow: hidden;
         }
+        
         #InputPanel {
             width: 280px;
             height: 500px;
@@ -23,6 +25,7 @@
             position: absolute;
             left: 0;
         } 
+        
         #GraphPanel {
             width: 1000px;
             height: 540px;
@@ -47,7 +50,9 @@
         
         var modeList = {
             login : 1,
-            reply : 2
+            reply : 2,
+            register: 3,
+            moderate: 4
         };
         
         //this variable is for storing the list of posts that a new post is in reply to.
@@ -66,7 +71,6 @@
         // Applet reports it is ready to use
         function javaSocketBridgeReady() {
                 bridge = getJAgoraBridge();
-                alert(bridge.getCodeBase());
                 bridge.startLib();
                 JAVA_READY_FLAG = true;
                 loadGraph(bridge.getArgumentByID(bridge.findArgument(43)));
@@ -76,28 +80,72 @@
             if (mode == modeList.login) {
                 d3.select("#LoginPanel").classed("inactive", false);
                 d3.select("#ReplyPanel").classed("inactive", true);
+                d3.select("#RegisterPanel").classed("inactive", true);
+                d3.select("#ModeratorPanel").classed("inactive", true);
             } else if (mode == modeList.reply) {
                 d3.select("#LoginPanel").classed("inactive", true);
                 d3.select("#ReplyPanel").classed("inactive", false);
+                d3.select("#RegisterPanel").classed("inactive", true);
+                d3.select("#ModeratorPanel").classed("inactive", true);
+            } else if (mode == modeList.register) {
+                d3.select("#LoginPanel").classed("inactive", true);
+                d3.select("#ReplyPanel").classed("inactive", true);
+                d3.select("#RegisterPanel").classed("inactive", false);
+                d3.select("#ModeratorPanel").classed("inactive", true);
+            } else if (mode == modeList.moderate) {
+                d3.select("#LoginPanel").classed("inactive", true);
+                d3.select("#ReplyPanel").classed("inactive", true);
+                d3.select("#RegisterPanel").classed("inactive", true);
+                d3.select("#ModeratorPanel").classed("inactive", false);
             }
         }
-        // This fuction logs us in and loads the forum hub.
         
-        function logIn() {
-                if (JAVA_READY_FLAG === true) {
-                    bridge.logIn(d3.select("#usernameField").node().value, d3.select("#passwordField").node().value);
-                    clearGraph();
+        //This function registers a new user for the forum.
+        function register() {
+            if (d3.select("#registerPasswordField").node().value !== 
+                d3.select("#confirmPasswordField").node().value) {
+                alert("Passwords do not match.");
+                return;
+            }
+            if (JAVA_READY_FLAG === true) {
+                    bridge.register(d3.select("#registerUsernameField").node().value, 
+                                    d3.select("#registerPasswordField").node().value,
+                                    d3.select("#registerEmailField").node().value);
                     setAppMode(modeList.reply);
-                }
-                else alert("Applet not yet ready.");
-            d3.select("#usernameField").property("value", "");
-            d3.select("#passwordField").property("value", "");
+                    d3.select("#registerUsernameField").property("value", "");
+                    d3.select("#registerPasswordField").property("value", "");
+                    d3.select("#registerEmailField").property("value", "");
+                    d3.select("#confirmPasswordField").property("value", "");
+            } else alert("Applet not yet ready.");
         }
+        
+        // This fuction logs us in and loads the forum hub.
+        function logIn() {
+            if (JAVA_READY_FLAG === true) {
+                bridge.logIn(d3.select("#usernameField").node().value, d3.select("#passwordField").node().value);
+                setAppMode(modeList.reply);
+                d3.select("#usernameField").property("value", "");
+                d3.select("#passwordField").property("value", "");
+                if (bridge.isModerator())
+                    d3.select("#moderatorButton").classed("inactive", false);
+            }
+            else alert("Applet not yet ready.");
+        }
+        
+        //this function is for moderators. It lets them delete spam posts.
+        
+        function deletePosts() {
+            bridge.deletePosts(targets);
+            for (post in targets) removePost(post);
+            targets = [];
+            refreshSVG();
+        }
+            
         
         //This function loads the arguments and attacks that are directly related to a argument.
         
         function loadNodes(d) {
-            loadGraph(bridge.getArgumentByID(d.post.getID()))
+            loadGraph(bridge.getArgumentByID(d))
         }
         
         //This function clears the svg, so we can draw more stuff in it.
@@ -118,13 +166,12 @@
         
         function newPost() {
             if (JAVA_READY_FLAG === true && targets.length > 0) {
-                if (bridge.newArgument(d3.select("#titleField").node().value,
-                                   d3.select("#bodyField").node().value, targets)) {
-                    loadGraph(bridge.getArgumentByID(targets[0].getID()))
-                    d3.select("#titleField").property("value", "");
-                    d3.select("#bodyField").property("value", "");
-                    targets = [];
-                }
+                var post = bridge.newArgument(d3.select("#titleField").node().value,
+                                   d3.select("#bodyField").node().value, targets);
+                loadNodes(post);
+                d3.select("#titleField").property("value", "");
+                d3.select("#bodyField").property("value", "");
+                targets = [];
             }
             
         }
@@ -171,7 +218,6 @@
                  .nodes(jsgraph.nodes)
                  .links(jsgraph.links)
                  .size([1000, 540])
-                 .linkDistance([150])
                  .linkStrength(0.3)
                  .gravity(0.005)
                  .charge([-100])
@@ -207,7 +253,7 @@
         
             
             numPosts = 0;
-            var rects = svg.selectAll("g")
+             var rects = svg.selectAll("g")
                 .append("rect")
                 .attr("width", function(d) {
                     return sizeArgument(d)[0];
@@ -233,24 +279,26 @@
                 .attr("id", function(d) { return "text" + numPosts++;});
         
             for (i = 0; i < numPosts; i++) {
-                    d3plus.textwrap()
-                        .container(d3.select("#text" + i))
-                        .width(d3.select("#rect" + i).node().width.baseVal.value)
-                        .draw();
+                d3plus.textwrap()
+                    .container(d3.select("#text" + i))
+                    .width(d3.select("#rect" + i).node().width.baseVal.value)
+                    .draw();
             }
         
             var expandButtons = svg.selectAll("g")
-                    .append("rect")
-                    .attr("x", function(d) {
-                        return d3.select("#rect" + d.index).node().width.baseVal.value -30;
-                    })
-                    .attr("y", function(d) {
-                        return d3.select("#rect" + d.index).node().height.baseVal.value -10;
-                    })
-                    .attr("width", 30)
-                    .attr("height", 10)
-                    .style("fill", "blue")
-                    .on("click", loadNodes);
+                .append("rect")
+                .attr("x", function(d) {
+                    return d3.select("#rect" + d.index).node().width.baseVal.value -30;
+                })
+                .attr("y", function(d) {
+                    return d3.select("#rect" + d.index).node().height.baseVal.value -10;
+                })
+                .attr("width", 30)
+                .attr("height", 10)
+                .style("fill", "blue")
+                .on("click", function(d) {
+                    loadNodes(d.post.getID());
+                });
             
             numPosts = 0;
             var replyButtons = svg.selectAll("g")
@@ -315,7 +363,19 @@
                 }
                 nodes.attr("transform", function(d) {return "translate("+d.x+","+d.y+")";});
 
-            });
+            })
+            .stop()
+            .linkDistance(function(d) {
+                var rectw = d3.select("#rect" + d.source.index).node().width.baseVal.value;
+                var recth = d3.select("#rect" + d.source.index).node().height.baseVal.value;
+                var linkLength = Math.sqrt((rectw * rectw) + (recth * recth));
+                rectw = d3.select("#rect" + d.target.index).node().width.baseVal.value;
+                recth = d3.select("#rect" + d.target.index).node().height.baseVal.value;
+                linkLength += Math.sqrt((rectw * rectw) + (recth * recth));
+                linkLength *= .75;
+                return linkLength;
+            })
+            .start();
         }
         
         //this function loads takes the links and turns them into javascript 
@@ -386,8 +446,11 @@
     <div>
         <applet id="JAgoraJSBridge" archive="JAgoraLib.jar" code="org.agora.lib.JAgoraJSBridge.class" width="1" height="1"></applet>
         <div id="modeSelect" class="btn-group">
+            <a href="http://angle.webfactional.com">Home</a>
             <button type="button" onclick="setAppMode(modeList.login)">Login</button>
             <button type="button" onclick="setAppMode(modeList.reply)">Reply</button>
+            <button type="button" onclick="setAppMode(modeList.register)">Register</button>
+            <button id="moderatorButton" type="button" class="inactive" onclick="setAppMode(modeList.moderate)">Moderate</button>
         </div>
         <div id="AppBody">
             <div id="InputPanel" class="panel tab-content">
@@ -415,6 +478,31 @@
                     <button type="button" onclick="newPost()">Submit</button>
                     
                     <button type="button" onclick="refreshSVG()">Refresh Graph</button>
+                </div>
+                <div id="RegisterPanel" class="tab-pane inactive">
+                    Login
+                    <p></p>
+
+                    UserName:
+
+                    <input type="text" id="registerUsernameField"> <p></p>
+                    
+                    Email:
+
+                    <input type="text" id="registerEmailField"><p></p>
+
+                    Password:
+
+                    <input type="password" id="registerPasswordField"><p></p>
+                    
+                    Confirm Password:
+
+                    <input type="password" id="confirmPasswordField"><p></p>
+
+                    <button type="button" onclick="register()">Submit</button>
+                </div>
+                <div id="ModeratorPanel" class="tab-pane inactive">
+                    <button type="button" onclick="deletePosts()">Delete</button>
                 </div>
             </div>
             <div id="GraphPanel">
